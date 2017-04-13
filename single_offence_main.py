@@ -20,10 +20,15 @@ def main():
   GAMMA = .99
   SOFT_UPDATE_FREQ = 1
   SOFT_UPDATE_STEP = .001
-  NUM_ITERATIONS = 
+  #TO_DO check max num iterations
+  NUM_ITERATIONS = 1000
+  #TO_DO check max episode length
+  MAX_EPISODE_LEN = 400
   
   #TO_DO check code
   BATCH_SIZE = 32
+  #power and directon bounds respectively
+  BOUNDS = [[0,100],[-180,180]]
 
 
   # Create the HFO Environment
@@ -36,15 +41,15 @@ def main():
   
   #create model
   #TO_DO
-  model = create_model(INPUT_SHAPE, NUM_ACTIONS)
+  [actor,actorTarget,critic,criticTarget] = create_model(INPUT_SHAPE, NUM_ACTIONS)
   #TO_DO include this function
-  policy = GreedyEpsilonPolicy(EPSILON)
+  policy = LinearDecayGreedyEpsilonPolicy(1,.1,10000,BOUNDS)
   #TO_DO (do we need a preprocessor? perhapse for bools of state)
-  preprocessor = Preprocessor()
+  preprocessor = None
   #TO_DO
   memory = ReplayMemory(REPLAY_MEM_SIZE)
   #TO_DO
-  agent = DQNAgent(model,preprocessor,memory,policy,GAMMA,SOFT_UPDATE_FREQ,SOFT_UPDATE_STEP,
+  agent = DQNAgent(actor,actorTarget,critic,criticTarget,preprocessor,memory,policy,GAMMA,SOFT_UPDATE_FREQ,SOFT_UPDATE_STEP,
         BATCH_SIZE,MEMORY_THRESHOLD,NUM_ACTIONS)
 
   #compile agent
@@ -57,28 +62,6 @@ def main():
   agent.fit(env, NUM_ITERATIONS, MAX_EPISODE_LEN)
 
   print("FINISHED TRAINING")
-
-  for episode in itertools.count():
-    status = IN_GAME
-    while status == IN_GAME:
-      # Grab the state features from the environment
-      features = hfo.getState()
-      print(len(features))
-      print(type(features))
-      print(np.shape(features))
-      print(features)
-      input()
-
-      # Take an action and get the current game status
-      hfo.act(DASH, 20.0, 0.)
-      # Advance the environment and get the game status
-      status = hfo.step()
-    # Check the outcome of the episode
-    print('Episode %d ended with %s'%(episode, hfo.statusToString(status)))
-    # Quit if the server goes down
-    if status == SERVER_DOWN:
-      hfo.act(QUIT)
-      break
 
 if __name__ == '__main__':
   main()

@@ -69,7 +69,7 @@ class ReplayMemory:
         self.M = deque(maxlen=max_size)
         self.max_size = max_size
         
-    def append(self, state, action, reward, next_state,is_terminal):
+    def append(self, state, action, reward, next_state, is_terminal):
         self.M.append(Sample(state,action,reward,next_state,is_terminal))
 
 

@@ -20,7 +20,7 @@ class LinearDecayGreedyEpsilonPolicy:
 
     """
 
-    def __init__(self, start_value, end_value, num_steps):  # noqa: D102
+    def __init__(self, start_value, end_value, num_steps, bounds):  # noqa: D102
         assert num_steps > 0
         assert end_value <= start_value
         assert start_value >= 0
@@ -32,8 +32,9 @@ class LinearDecayGreedyEpsilonPolicy:
         self.end_value = end_value
         self.num_steps = num_steps
         self.cur_steps = 0
+        self.bounds = bounds
 
-    def select_action(self, action_values, num_actions, is_training):
+    def select_action(self, action_values, is_training):
         """Decay parameter and select action.
 
         Parameters
@@ -61,9 +62,34 @@ class LinearDecayGreedyEpsilonPolicy:
 
         self.cur_steps +=1
 
-        #TO_DO implement action selection as in paper
+        if(epsilon>np.random.rand()):
+          #choose random action type
+          ACTION_TYPE = np.random.randint(0,4)
 
+          #choose random parameters
+          if(ACTION_TYPE == DASH || ACTION_TYPE == KICK):
+            #random power/direction
+            return [ACTION_TYPE, np.random.uniform(self.bounds[0][0],self.bounds[0][0]), np.random.uniform(self.bounds[1][0],self.bounds[1][0])]
+          else:
+            #random direction
+            return [ACTION_TYPE, np.random.uniform(self.bounds[1][0],self.bounds[1][0])]
+        else:
+          #convert discreet action values to a list
+          action_values_list = list(action_values[0:4])
+          ACTION_TYPE = action_values_list.index(max(action_values_list))
+          
+          if(ACTION_TYPE == DASH):
+            return [ACTION_TYPE,action_values[4],action_values[5]]
+          elif(ACTION_TYPE == TURN):
+            return [ACTION_TYPE,action_values[6]]
+          elif(ACTION_TYPE == TACKLE):
+            return [ACTION_TYPE,action_values[7]]
+          elif(ACTION_TYPE == KICK):
+            return [ACTION_TYPE,action_values[8],action_values[9]]
+          else:
+            raise NameError('Invalid ACTION_TYPE in policy')
 
+  
 
     def reset(self):
         """Start the decay over at the start value."""
