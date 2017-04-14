@@ -1,14 +1,11 @@
 """Core classes."""
 import numpy as np
-import gym
-import cv2
 import random
 from collections import deque
 
 
 
 class Sample:
-    #TO_DO
     """Represents a reinforcement learning sample.
 
     Used to store observed experience from an MDP. Represents a
@@ -28,7 +25,11 @@ class Sample:
       True if s_t1 is a terminal state.
     """
     def __init__(self,s_t,a_t,r_t,s_t1,is_terminal):        
-        pass
+        self.s_t = s_t
+        self.a_t = a_t
+        self.r_t = r_t
+        self.s_t1 = s_t1
+        self.is_terminal = is_terminal
         
 class Preprocessor:
     """
@@ -59,11 +60,8 @@ class ReplayMemory:
     ----------
     max_size: int
         maximum amount of samples which can be stored in this replay memory
-    window_length: int
-        number of frames stored in each state
-
     """
-    def __init__(self, max_size, window_length):
+    def __init__(self, max_size):
         #Note: Once a bounded length deque is full, when new items are added, a 
         #corresponding number of items are discarded from the opposite end.
         self.M = deque(maxlen=max_size)
@@ -88,7 +86,20 @@ class ReplayMemory:
           size of list = batch_size
 
         """
-        return random.sample(list(self.M), batch_size)
+
+        #make sure to "deep copy" the samples
+        sampl_obj_refferences = random.sample(list(self.M), batch_size)
+
+        new_samples = list();
+        for i in range(len(sampl_obj_refferences)):
+            s_t = np.copy(sampl_obj_refferences[i].s_t)
+            a_t = np.copy(sampl_obj_refferences[i].a_t)
+            r_t = sampl_obj_refferences[i].r_t
+            s_t1 = np.copy(sampl_obj_refferences[i].s_t1)
+            is_terminal = sampl_obj_refferences[i].is_terminal
+            new_samples.append(Sample(s_t,a_t,r_t,s_t1,is_terminal))
+
+        return new_samples
 
     def clear(self):
         self.M.clear()

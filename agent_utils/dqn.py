@@ -1,16 +1,17 @@
+from hfo import *
 import numpy as np
-#import matplotlib.pyplot as plt
 import time
 import random
+import itertools
+import math
+from math import sqrt
+from math import cos
 
 """Main DQN agent."""
 
 class DQNAgent:
     """Class implementing DQN / Liniear QN.
-    """
-    DQNAgent(model,preprocessor,memory,policy,GAMMA,SOFT_UPDATE_FREQ,SOFT_UPDATE_STEP,
-        BATCH_SIZE,MEMORY_THRESHOLD,NUM_ACTIONS)    
-
+    """  
 
     def __init__(self,
                  actor,
@@ -26,6 +27,7 @@ class DQNAgent:
                  batch_size,
                  memory_threshold,
                  num_actions,
+                 num_features
                 ):
 
         self.actor = actor
@@ -41,6 +43,7 @@ class DQNAgent:
         self.batch_size = batch_size
         self.memory_threshold = memory_threshold
         self.num_actions = num_actions
+        self.num_features = num_features
 
     #TO_DO
     def compile(self, optimizer, loss_func):
@@ -48,7 +51,10 @@ class DQNAgent:
           Compile online network (and target network if target fixing/ double Q-learning
             is being utilized) with provided optimizer/loss functions.
         """
-        pass 
+        self.actor.compile(loss=loss_func,optimizer=optimizer)
+        self.actor_target.compile(loss=loss_func,optimizer=optimizer)
+        self.critic.compile(loss=loss_func,optimizer=optimizer)
+        self.critic_target.compile(loss=loss_func,optimizer=optimizer)
 
     #TO_DO
     def calc_q_values(self, state):
@@ -98,7 +104,7 @@ class DQNAgent:
             # serialize weights to HDF5
             self.q_network.save_weights(weightstr)
 
-
+    #TO_DO: held out states
     def populate_replay_memory_and_held_out_states(self, env):
         """
         Populates replay memory and held out states memory with samples
@@ -106,47 +112,52 @@ class DQNAgent:
 
         Parameters
         ----------
-        env: gym.Env
-          Atari environment being simulated.
+        env: HFOEnvironment
+          Environment to be fitted. 
         """
         print("Populating replay mem ...")
-        #initial state for replay memory filling
-        self.history.process_state_for_network(env.reset())
-        s_t=self.history.frames
 
         # populate replay memory
-        for iter in range(self.replay_start_size):
-            if(iter%10000 == 0):
-                print("Replay Mem Iter: "+str(iter))
-            
-            # select random action
-            a_t = env.action_space.sample()
-            
-            # get next state, reward, is terminal
-            (image, r_t, is_terminal, info) = env.step(a_t)
-            r_t=self.preprocessor.process_reward(r_t)
-            self.history.process_state_for_network(image)
-            s_t1=self.history.frames
+        cur_iteration = 0
+        for episode in itertools.count():
+            #indicate game has started
+            status = IN_GAME
+            #get initial state
+            s_t = env.getState()
+            s_t = np.asmatrix(s_t)
 
-            #store held out states to be used for Q-value evaluation
-            if iter<self.held_out_states_size:
-                self.held_out_states.append(self.preprocessor.process_state_for_memory(s_t), a_t,
-                               r_t, self.preprocessor.process_state_for_memory(s_t1), is_terminal)
-            
-            # store sample in memory
-            if(self.network_type != "Linear"):
-                self.memory.append(self.preprocessor.process_state_for_memory(s_t), a_t,
-                        r_t, self.preprocessor.process_state_for_memory(s_t1), is_terminal)
-            
-            #update new state
-            if (is_terminal):
-                self.history.reset()
-                self.history.process_state_for_network(env.reset())
-                s_t = self.history.frames
-            else:
+            first_time_kickablezone = 0
+            while status == IN_GAME:
+                if(cur_iteration == self.memory_threshold):
+                    print("Done populating replay mem ...")
+                    return
+
+                #TO_DO: get action vector
+                action_vector = self.actor.predict(s_t)
+
+                #loads action ie: env.act(DASH, 20.0, 0.)
+                self.load_action(env, action_vector)
+
+                #advance the environment and get the game status
+                [status, is_terminal] = self.advance_environment(env)
+
+                #get new state
+                s_t1 = env.getState()
+                s_t1 = np.asmatrix(s_t1)
+
+                #get reward
+                [r_t, kickable_count] = self.get_reward(s_t, s_t1, action_vector,first_time_kickablezone,status)
+                first_time_kickablezone = kickable_count
+
+                #store sample
+                self.memory.append(s_t, action_vector, r_t, s_t1, is_terminal)
+
+                #set new current state
                 s_t = s_t1
 
-        print("Done populating replay mem ...")
+                cur_iteration+=1
+
+        
 
     def advance_environment(self, env):
         status = env.step()
@@ -170,8 +181,29 @@ class DQNAgent:
             env.act(action_type_and_params[0], action_type_and_params[1], action_type_and_params[2])
         else:
             env.act(action_type_and_params[0], action_type_and_params[1])
+    
+    #TO_DO Batch normalization??
+    def update_network(self):
+        sample_batch = self.memory.sample(self.batch_size)
 
-    def get_reward(self, s_t, s_t1, action_vector):
+        #test forward/backward propegate for all networks
+        #get inputs for actor/critc networks and rewards
+        next_states = np.zeros((self.batch_size,self.num_features))
+        current_states_and_actions = np.zeros((self.batch_size,self.num_features+self.num_actions))
+        for i in range(len(sample_batch)):
+            next_states[i] = sample_batch[i].s_t1
+            current_states_and_actions[i][0:self.num_features] = sample_batch[i].s_t
+            current_states_and_actions[i][self.num_features:] = sample_batch[i].a_t
+
+        actorPredictions = self.actor.predict(next_states)
+        criticPredictions = self.critic.predict(current_states_and_actions)
+
+        lossA = self.actor.train_on_batch(next_states,actorPredictions)
+        lossC = self.critic.train_on_batch(current_states_and_actions,criticPredictions)
+
+        return (lossA,lossC)
+
+    def get_reward(self, s_t, s_t1, action_vector,first_time_kickablezone,status):
         """
         Parameters
         ----------
@@ -187,8 +219,93 @@ class DQNAgent:
         reward: float
             The reward gained from transitioning between s_t and s_t1
         """
+        reward = 0
 
-        pass
+        #get current ball dist
+        ball_proxim_t1 = s_t1[0,53]
+        ball_dist_t1 = 1.0-ball_proxim_t1
+
+        #get previous ball dist
+        ball_proxim_t = s_t[0,53]
+        ball_dist_t = 1.0-ball_proxim_t
+
+        #get change in distance
+        ball_dist_delta = ball_dist_t - ball_dist_t1
+
+        #Increment reward by change in ball distance from self
+        reward += ball_dist_delta
+
+        #get goal distance curr nd prev
+        goal_proxim_t1 = s_t1[0,15]
+        goal_dist_t1 = 1.0-goal_proxim_t1
+        goal_proxim_t = s_t[0,15]
+        goal_dist_t = 1.0-goal_proxim_t
+
+        #get change in goal dist
+        goal_dist_delta = goal_dist_t - goal_dist_t1
+
+        # get if agent in current state is able to kick:
+        kickable_t1 = s_t1[0,12]
+        kickable_t = s_t[0,12]
+        kickable_delta = kickable_t1 - kickable_t
+        # give rewards for going into kickable zone the first time in an episode
+        # Include additonal checks when more than one player
+        
+        if(first_time_kickablezone == 0 and kickable_delta >= 1):
+            first_time_kickablezone += 1
+            #Increment reward by 1
+            reward += 1
+        #calculate distance between ball and goal using cosine law
+        # it's the 3rd side of the traingle formed with ball_dist and goal_dist 
+        #### For curr state ######################
+        ball_ang_sin_rad_t1 = s_t1[0,51]
+        ball_ang_cos_rad_t1 = s_t1[0,52]
+        #adjust range from (-pi,pi)
+        ball_ang_rad_t1 = math.acos(ball_ang_cos_rad_t1)
+        if (ball_ang_sin_rad_t1 < 0):
+            ball_ang_rad_t1 *= -1.0
+        goal_ang_sin_rad_t1 = s_t1[0,13]
+        goal_ang_cos_rad_t1 = s_t1[0,14]
+        goal_ang_rad_t1 = math.acos(goal_ang_cos_rad_t1)
+        if (goal_ang_sin_rad_t1 < 0):
+            goal_ang_rad_t1 *= -1.0
+
+        alpha_t1 = max(ball_ang_rad_t1, goal_ang_rad_t1) - min(ball_ang_rad_t1, goal_ang_rad_t1)
+        # By law of cosines. Alpha is angle between ball and goal
+        ball_dist_goal_t1 = sqrt(ball_dist_t1*ball_dist_t1 + goal_dist_t1*goal_dist_t1 -
+                              2.*ball_dist_t1*goal_dist_t1*cos(alpha_t1))
+        
+        ######## For previous state ######################################
+        ball_ang_sin_rad_t = s_t[0,51]
+        ball_ang_cos_rad_t = s_t[0,52]
+        #adjust range from (-pi,pi)
+        ball_ang_rad_t = math.acos(ball_ang_cos_rad_t)
+        if (ball_ang_sin_rad_t < 0):
+            ball_ang_rad_t *= -1.0
+        goal_ang_sin_rad_t = s_t[0,13]
+        goal_ang_cos_rad_t = s_t[0,14]
+        goal_ang_rad_t = math.acos(goal_ang_cos_rad_t)
+        if (goal_ang_sin_rad_t < 0):
+            goal_ang_rad_t *= -1.0
+
+        alpha_t = max(ball_ang_rad_t, goal_ang_rad_t) - min(ball_ang_rad_t, goal_ang_rad_t)
+        # By law of cosines. Alpha is angle between ball and goal
+        ball_dist_goal_t = sqrt(ball_dist_t*ball_dist_t + goal_dist_t*goal_dist_t -
+                              2.*ball_dist_t*goal_dist_t*cos(alpha_t))
+
+        #change in distance between ball and goal
+        ball_dist_goal_delta = ball_dist_goal_t - ball_dist_goal_t1
+
+        #incremenr reward by 3. change in distance between goal and ball
+        reward += 3.0*ball_dist_goal_delta
+
+        #Check if goal or not
+        
+        if(status == GOAL):
+        #check for 'unexpected side'???
+            reward += 5
+
+        return reward, first_time_kickablezone
 
     def fit(self, env, num_iterations, max_episode_length, num_episodes=20):
         """Fit DQN/Linear QN model to the provided environment.
@@ -204,8 +321,7 @@ class DQNAgent:
           resets. Can help exploration.
         """
         
-        #populate replay memory (if network has one)
-        #TO_DO implement this correctly
+        #populate replay memory
         self.populate_replay_memory_and_held_out_states(env)
 
         #init metric vectors (to eventually plot)
@@ -219,8 +335,9 @@ class DQNAgent:
             #indicate game has started
             status = IN_GAME
             #get initial state
-            s_t = hfo.getState()
-
+            s_t = env.getState()
+            s_t = np.asmatrix(s_t)
+            first_time_kickablezone = 0
             while status == IN_GAME:
                 if(cur_iteration == num_iterations):
                     #TO_DO save everything
@@ -228,11 +345,10 @@ class DQNAgent:
                     return
 
                 #TO_DO: update network
-                loss = self.update_network()
-
+                (lossA,lossC) = self.update_network()
             
                 #TO_DO: get action vector
-                action_vector = self.model. (get action vector)
+                action_vector = self.actor.predict(s_t)
 
                 #loads action ie: env.act(DASH, 20.0, 0.)
                 self.load_action(env, action_vector)
@@ -242,9 +358,11 @@ class DQNAgent:
 
                 #get new state
                 s_t1 = env.getState()
+                s_t1 = np.asmatrix(s_t1)
 
                 #get reward
-                r_t = self.get_reward(s_t, s_t1, action_vector)
+                [r_t,kickable_count] = self.get_reward(s_t, s_t1, action_vector, first_time_kickablezone, status)
+                first_time_kickablezone = kickable_count
 
                 #store sample
                 self.memory.append(s_t, action_vector, r_t, s_t1, is_terminal)
@@ -252,13 +370,14 @@ class DQNAgent:
                 #set new current state
                 s_t = s_t1
 
+                cur_iteration+=1
+
             # Check the outcome of the episode
-            print('Episode %d ended with %s'%(episode, hfo.statusToString(status)))
+            print('Episode %d ended with %s'%(episode, env.statusToString(status)))
             # Quit if the server goes down
             if status == SERVER_DOWN:
-                hfo.act(QUIT)
+                env.act(QUIT)
                 break
-
 
         #TO_DO: save all models... + log files..
 

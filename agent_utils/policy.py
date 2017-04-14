@@ -1,7 +1,8 @@
 """RL Policy classes.
 """
 import numpy as np
-import attr
+from hfo import *
+
 
 class LinearDecayGreedyEpsilonPolicy:
     """Policy with a parameter that decays linearly.
@@ -67,7 +68,7 @@ class LinearDecayGreedyEpsilonPolicy:
           ACTION_TYPE = np.random.randint(0,4)
 
           #choose random parameters
-          if(ACTION_TYPE == DASH || ACTION_TYPE == KICK):
+          if(ACTION_TYPE == DASH or ACTION_TYPE == KICK):
             #random power/direction
             return [ACTION_TYPE, np.random.uniform(self.bounds[0][0],self.bounds[0][0]), np.random.uniform(self.bounds[1][0],self.bounds[1][0])]
           else:
@@ -75,21 +76,21 @@ class LinearDecayGreedyEpsilonPolicy:
             return [ACTION_TYPE, np.random.uniform(self.bounds[1][0],self.bounds[1][0])]
         else:
           #convert discreet action values to a list
-          action_values_list = list(action_values[0:4])
+          action_values_list = list(action_values[0,0:4])
           ACTION_TYPE = action_values_list.index(max(action_values_list))
           
           if(ACTION_TYPE == DASH):
-            return [ACTION_TYPE,action_values[4],action_values[5]]
+            return [ACTION_TYPE,action_values[0,4],action_values[0,5]]
           elif(ACTION_TYPE == TURN):
-            return [ACTION_TYPE,action_values[6]]
+            return [ACTION_TYPE,action_values[0,6]]
           elif(ACTION_TYPE == TACKLE):
-            return [ACTION_TYPE,action_values[7]]
+            return [ACTION_TYPE,action_values[0,7]]
           elif(ACTION_TYPE == KICK):
-            return [ACTION_TYPE,action_values[8],action_values[9]]
+            return [ACTION_TYPE,action_values[0,8],action_values[0,9]]
           else:
             raise NameError('Invalid ACTION_TYPE in policy')
 
-  
+
 
     def reset(self):
         """Start the decay over at the start value."""
