@@ -9,6 +9,7 @@ from hfo import *
 import numpy as np
 import tensorflow as tf
 
+import keras
 from keras.layers import (Activation, Convolution2D, Dense, Flatten, Input,
                           Permute,Reshape,merge)
 from keras.models import Model
@@ -76,7 +77,7 @@ def main():
   SOFT_UPDATE_FREQ = 1
   SOFT_UPDATE_STEP = .001
   #TO_DO check max num iterations
-  NUM_ITERATIONS = 1000
+  NUM_ITERATIONS = 500
   #TO_DO check max episode length
   MAX_EPISODE_LEN = 400
   

@@ -14,9 +14,7 @@ import tensorflow as tf
 
 class DQNAgent:
     """Class implementing DQN / Liniear QN.
-    """  
-    TYPE_LAYER_NAME = "type_output"
-    PARAM_LAYER_NAME = "param_output"
+    """ 
 
     def __init__(self,
                  actor_critic,
@@ -46,6 +44,8 @@ class DQNAgent:
         self.num_actions = num_actions
         self.num_features = num_features
 
+        self.TYPE_LAYER_NAME = "type_output"
+        self.PARAM_LAYER_NAME = "param_output"
 
     def compile(self, optimizer, loss_func):
         """
@@ -74,12 +74,12 @@ class DQNAgent:
     def calc_action_vector(self, state):
         # state: numpy.array of the state(s)
         # action_vector: (batch size, 10). action type (4) comes first, followed by params (6) 
-        get_type_output = K.function([actor_critic.layers[0].input],
-                          [actor_critic.get_layer(TYPE_LAYER_NAME).output])
+        get_type_output = K.function([self.actor_critic.layers[0].input],
+                          [self.actor_critic.get_layer(self.TYPE_LAYER_NAME).output])
         type_output = get_type_output([state])[0]
 
-        get_param_output = K.function([actor_critic.layers[0].input],
-                          [actor_critic.get_layer(PARAM_LAYER_NAME).output])
+        get_param_output = K.function([self.actor_critic.layers[0].input],
+                          [self.actor_critic.get_layer(self.PARAM_LAYER_NAME).output])
         param_output = get_param_output([state])[0]
 
         action_vector = np.concatenate((type_output, param_output), axis=1)
@@ -204,22 +204,27 @@ class DQNAgent:
         #get inputs for actor/critc networks and rewards
         next_states = np.zeros((self.batch_size,self.num_features))
         current_states = np.zeros((self.batch_size,self.num_features))
+        r_batch = np.zeros((self.batch_size,1))
 
         for i in range(len(sample_batch)):
             next_states[i] = sample_batch[i].s_t1
             current_states[i] = sample_batch[i].s_t
+            r_batch[i] = sample_batch[i].r_t
 
         # forward pass to get Q(s',a')
-        q_next = actor_critic_target.predict_on_batch(next_states)
-        q_true = np.array(q_next)*gamma + r
-        loss = actor_critic.train_on_batch(current_states, q_true)
+        q_next = self.actor_critic_target.predict_on_batch(next_states)
+        q_true = np.array(q_next)*self.gamma + r_batch
+        loss = self.actor_critic.train_on_batch(current_states, q_true)
         return loss
 
     def soft_update_target(self):
         # do softupdate on the target network
         update_portion = self.soft_update_step
         online_weights = self.actor_critic.get_weights()
+        online_weights = np.array(online_weights)
         old_target_weights = self.actor_critic_target.get_weights()
+        old_target_weights = np.array(old_target_weights)
+
         new_target_weights = update_portion*online_weights + (1-update_portion)*old_target_weights
         self.actor_critic_target.set_weights(new_target_weights)
 
