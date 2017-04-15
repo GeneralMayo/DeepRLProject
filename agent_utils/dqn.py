@@ -46,6 +46,7 @@ class DQNAgent:
 
         self.TYPE_LAYER_NAME = "type_output"
         self.PARAM_LAYER_NAME = "param_output"
+        self.WRITER_FILE_PATH = "tensorboard_report"
 
     def compile(self, optimizer, loss_func):
         """
@@ -356,6 +357,12 @@ class DQNAgent:
         #reward_log=np.zeros(int(np.ceil(num_iterations/self.reward_samp)))
 
         #iterate through environment samples
+
+        # writer for tensorboard
+        # the path is a new subfolder created in the working dir
+        writer = tf.summary.FileWriter(self.WRITER_FILE_PATH)
+
+
         cur_iteration = 0
         for episode in itertools.count():
             #indicate game has started
@@ -468,3 +475,29 @@ class DQNAgent:
         avg_min_qval=min(q_vals_eval)/num_episodes
         
         return avg_reward, avg_qval,avg_max_qval,avg_min_qval
+
+    # call this function like this:
+    # self.save_scalar(steps_after_first_memfull, 'avg_reward', avg_reward, writer)
+    # step:iteration count (x axis of the plots)
+    # name: name of variable to store in
+    # value: value to be stored
+    # writer: writer object
+    def save_scalar(self, step, name, value, writer):
+      """Save a scalar value to tensorboard.
+      
+      Parameters
+      ----------
+      step: int
+        Training step (sets the position on x-axis of tensorboard graph.
+      name: str
+        Name of variable. Will be the name of the graph in tensorboard.
+      value: float
+        The value of the variable at this step.
+      writer: tf.FileWriter
+        The tensorboard FileWriter instance.
+      """
+        summary = tf.Summary()
+        summary_value = summary.value.add()
+        summary_value.simple_value = float(value)
+        summary_value.tag = name
+        writer.add_summary(summary, step)
