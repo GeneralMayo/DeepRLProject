@@ -6,18 +6,21 @@ import itertools
 import math
 from math import sqrt
 from math import cos
+from keras import backend as K
+import keras
+import tensorflow as tf
 
 """Main DQN agent."""
 
 class DQNAgent:
     """Class implementing DQN / Liniear QN.
     """  
+    TYPE_LAYER_NAME = "type_output"
+    PARAM_LAYER_NAME = "param_output"
 
     def __init__(self,
-                 actor,
-                 actor_target,
-                 critic,
-                 critic_target,
+                 actor_critic,
+                 actor_critic_target,
                  preprocessor,
                  memory,
                  policy,
@@ -30,10 +33,8 @@ class DQNAgent:
                  num_features
                 ):
 
-        self.actor = actor
-        self.actor_target = actor_target
-        self.critic = critic
-        self.critic_target = critic_target
+        self.actor_critic = actor_critic
+        self.actor_critic_target = actor_critic_target
         self.preprocessor = preprocessor
         self.memory = memory
         self.policy = policy
@@ -45,18 +46,16 @@ class DQNAgent:
         self.num_actions = num_actions
         self.num_features = num_features
 
-    #TO_DO
+
     def compile(self, optimizer, loss_func):
         """
           Compile online network (and target network if target fixing/ double Q-learning
             is being utilized) with provided optimizer/loss functions.
         """
-        self.actor.compile(loss=loss_func,optimizer=optimizer)
-        self.actor_target.compile(loss=loss_func,optimizer=optimizer)
-        self.critic.compile(loss=loss_func,optimizer=optimizer)
-        self.critic_target.compile(loss=loss_func,optimizer=optimizer)
+        self.actor_critic.compile(loss=loss_func,optimizer=optimizer)
+        self.actor_critic_target.compile(loss=loss_func,optimizer=optimizer)
 
-    #TO_DO
+    #TO_DO (NOT NECESSARY ANYMORE)
     def calc_q_values(self, state):
         """
         Given a preprocessed state (or batch of states) calculate the Q-values.
@@ -71,6 +70,21 @@ class DQNAgent:
         Q-values for the state(s): numpy.array
         """
         pass
+
+    def calc_action_vector(self, state):
+        # state: numpy.array of the state(s)
+        # action_vector: (batch size, 10). action type (4) comes first, followed by params (6) 
+        get_type_output = K.function([actor_critic.layers[0].input],
+                          [actor_critic.get_layer(TYPE_LAYER_NAME).output])
+        type_output = get_type_output([state])[0]
+
+        get_param_output = K.function([actor_critic.layers[0].input],
+                          [actor_critic.get_layer(PARAM_LAYER_NAME).output])
+        param_output = get_param_output([state])[0]
+
+        action_vector = np.concatenate((type_output, param_output), axis=1)
+        return action_vector
+
 
     
     #TO_DO probably need to rewrite this
@@ -132,8 +146,8 @@ class DQNAgent:
                     print("Done populating replay mem ...")
                     return
 
-                #TO_DO: get action vector
-                action_vector = self.actor.predict(s_t)
+                #get action vector
+                action_vector = self.calc_action_vector(s_t)
 
                 #loads action ie: env.act(DASH, 20.0, 0.)
                 self.load_action(env, action_vector)
@@ -189,19 +203,26 @@ class DQNAgent:
         #test forward/backward propegate for all networks
         #get inputs for actor/critc networks and rewards
         next_states = np.zeros((self.batch_size,self.num_features))
-        current_states_and_actions = np.zeros((self.batch_size,self.num_features+self.num_actions))
+        current_states = np.zeros((self.batch_size,self.num_features))
+
         for i in range(len(sample_batch)):
             next_states[i] = sample_batch[i].s_t1
-            current_states_and_actions[i][0:self.num_features] = sample_batch[i].s_t
-            current_states_and_actions[i][self.num_features:] = sample_batch[i].a_t
+            current_states[i] = sample_batch[i].s_t
 
-        actorPredictions = self.actor.predict(next_states)
-        criticPredictions = self.critic.predict(current_states_and_actions)
+        # forward pass to get Q(s',a')
+        q_next = actor_critic_target.predict_on_batch(next_states)
+        q_true = np.array(q_next)*gamma + r
+        loss = actor_critic.train_on_batch(current_states, q_true)
+        return loss
 
-        lossA = self.actor.train_on_batch(next_states,actorPredictions)
-        lossC = self.critic.train_on_batch(current_states_and_actions,criticPredictions)
+    def soft_update_target(self):
+        # do softupdate on the target network
+        update_portion = self.soft_update_step
+        online_weights = self.actor_critic.get_weights()
+        old_target_weights = self.actor_critic_target.get_weights()
+        new_target_weights = update_portion*online_weights + (1-update_portion)*old_target_weights
+        self.actor_critic_target.set_weights(new_target_weights)
 
-        return (lossA,lossC)
 
     def get_reward(self, s_t, s_t1, action_vector,first_time_kickablezone,status):
         """
@@ -344,11 +365,15 @@ class DQNAgent:
                     #possibly save replay memory
                     return
 
-                #TO_DO: update network
-                (lossA,lossC) = self.update_network()
+                #update network
+                loss = self.update_network()
+                # updates the target network with information of the online network
+                # only happens once in a while (according to soft_update_freq)
+                if cur_iteration % self.soft_update_freq == 0:
+                    self.soft_update_target()
             
-                #TO_DO: get action vector
-                action_vector = self.actor.predict(s_t)
+                #get action vector
+                action_vector = self.calc_action_vector(s_t)
 
                 #loads action ie: env.act(DASH, 20.0, 0.)
                 self.load_action(env, action_vector)
