@@ -47,6 +47,9 @@ class DQNAgent:
         self.TYPE_LAYER_NAME = "type_output"
         self.PARAM_LAYER_NAME = "param_output"
         self.WRITER_FILE_PATH = "tensorboard_report"
+        self.MODEL_FILE_STRING_AC = "ac_model_"
+        self.MODEL_FILE_STRING_TAR = "ac_target_model_"
+        self.MEM_FILE_NAME = "mem_replay_"
 
     def compile(self, optimizer, loss_func):
         """
@@ -501,3 +504,38 @@ class DQNAgent:
         summary_value.simple_value = float(value)
         summary_value.tag = name
         writer.add_summary(summary, step)
+
+    def save_models(self, step):
+        new_model_file_string = self.MODEL_FILE_STRING_AC + str(step) + '.h5'
+        new_target_model_file_string = self.MODEL_FILE_STRING_TAR + str(step) + '.h5'
+        self.actor_critic.save(new_model_file_string)
+        self.actor_critic.save(new_target_model_file_string)
+
+    def save_replay_memory(self, step):
+        memory_size = self.memory.max_size
+        sample_width = self.num_features*2 + self.num_actions + 2
+        curr_mem_array = np.zeros((0, sample_width))
+        counter = 0
+
+        for sample in self.memory:
+            s_t = sample.s_t
+            a_t = sample.a_t
+            new_line = np.concatenate((s_t,a_t))
+            r_t = sample.r_t
+            new_line = np.concatenate((new_line,r_t))
+            s_t1 = sample.s_t1
+            new_line = np.concatenate((new_line,s_t1))
+            if sample.is_terminal: 
+                is_terminal = 1
+            else:
+                is_terminal = 0 
+            new_line = np.concatenate((new_line,is_terminal))
+            curr_mem_array = np.concatenate((curr_mem_array, np.array([new_line])))
+            
+
+        string_name = self.MEM_FILE_NAME + str(step) + '.h5'
+        h5f = h5py.File(string_name, 'w')
+        h5_name = 'replay_mem_' + str(step)
+        h5f.create_dataset(h5_name, data=curr_mem_array)
+
+
