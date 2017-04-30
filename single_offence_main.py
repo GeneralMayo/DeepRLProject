@@ -135,6 +135,7 @@ def main():
     EPISODES_PER_EVAL = 2
     EVAL_FREQ = 500
     SAVE_FREQ = 500
+    POLICY_EXPLORATION_STEPS = 100
   else:
     #set constants
     NUM_FEATURES = 58
@@ -155,6 +156,7 @@ def main():
     RELU_NEG_SLOPE = 0.01
     EVAL_FREQ = 5000
     SAVE_FREQ = 100000
+    POLICY_EXPLORATION_STEPS = 10000
 
   # Create the HFO Environment
   env = HFOEnvironment()
@@ -178,7 +180,7 @@ def main():
     actor_critic_target = init_actor_critic_new(init,RELU_NEG_SLOPE)
 
 
-  policy = LinearDecayGreedyEpsilonPolicy(1,.1,100,BOUNDS)
+  policy = LinearDecayGreedyEpsilonPolicy(1,.1,POLICY_EXPLORATION_STEPS,BOUNDS)
   preprocessor = None
   memory = ReplayMemory(REPLAY_MEM_SIZE)
   agent = DQNAgent(actor_critic, actor_critic_target,preprocessor,memory,policy,GAMMA,SOFT_UPDATE_FREQ,SOFT_UPDATE_STEP,
