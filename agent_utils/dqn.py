@@ -11,16 +11,13 @@ import keras
 import tensorflow as tf
 import h5py
 
-"""Main DQN agent."""
+"""Main Actor/Critic agent."""
 
 class DQNAgent:
-    """Class implementing DQN / Liniear QN.
-    """ 
 
     def __init__(self,
-                 actor_critic,
-                 actor_critic_target,
-                 preprocessor,
+                 actor,
+                 critic,
                  memory,
                  policy,
                  gamma,
@@ -28,16 +25,16 @@ class DQNAgent:
                  soft_update_step,
                  batch_size,
                  memory_threshold,
-                 num_actions,
+                 num_action_types, 
+                 num_action_params,
                  num_features,
                  eval_freq,
                  episodes_per_eval,
                  save_freq
                 ):
 
-        self.actor_critic = actor_critic
-        self.actor_critic_target = actor_critic_target
-        self.preprocessor = preprocessor
+        self.actor = actor
+        self.critic = critic
         self.memory = memory
         self.policy = policy
         self.gamma = gamma
@@ -45,89 +42,25 @@ class DQNAgent:
         self.soft_update_step = soft_update_step
         self.batch_size = batch_size
         self.memory_threshold = memory_threshold
-        self.num_actions = num_actions
+        self.num_action_types = num_action_types
+        self.num_action_params = num_action_params
         self.num_features = num_features
         self.eval_freq = eval_freq
         self.episodes_per_eval = episodes_per_eval
         self.save_freq = save_freq
 
-        self.TYPE_LAYER_NAME = "type_output"
-        self.PARAM_LAYER_NAME = "param_output"
-        self.WRITER_FILE_PATH = "tensorboard_report"
-        self.MODEL_FILE_STRING_AC = "ac_model_"
-        self.MODEL_FILE_STRING_TAR = "ac_target_model_"
-        self.MEM_FILE_NAME = "mem_replay_"
-
-    def compile(self, optimizer, loss_func):
-        """
-          Compile online network (and target network if target fixing/ double Q-learning
-            is being utilized) with provided optimizer/loss functions.
-        """
-        self.actor_critic.compile(loss=loss_func,optimizer=optimizer)
-        self.actor_critic_target.compile(loss=loss_func,optimizer=optimizer)
-
-    #TO_DO (NOT NECESSARY ANYMORE)
-    def calc_q_values(self, state):
-        """
-        Given a preprocessed state (or batch of states) calculate the Q-values.
-
-        Parameters
-        ----------
-        state: numpy.array
-          size is (32x4x84x84) for batch and (1x4x84x84) for single sample.
-        
-        Return
-        ------
-        Q-values for the state(s): numpy.array
-        """
-        pass
-
     def calc_action_vector(self, state):
-        # state: numpy.array of the state(s)
-        # action_vector: (batch size, 10). action type (4) comes first, followed by params (6) 
-        get_type_output = K.function([self.actor_critic.layers[0].input],
-                          [self.actor_critic.get_layer(self.TYPE_LAYER_NAME).output])
-        type_output = get_type_output([state])[0]
+        #predict state types + params
+        action_list = self.actor.online__predict(state)
+        
+        #convert action_list to proper format
+        action_vector = np.concatenate((action_list[0], action_list[1]), axis=1)
 
-        get_param_output = K.function([self.actor_critic.layers[0].input],
-                          [self.actor_critic.get_layer(self.PARAM_LAYER_NAME).output])
-        param_output = get_param_output([state])[0]
-
-        action_vector = np.concatenate((type_output, param_output), axis=1)
         return action_vector
 
-
-    
-    #TO_DO probably need to rewrite this
-    def save_weights_on_interval(self, curiter, totaliter):
-        """
-        Saves model and weights at different stages of training.
-
-        Parameters
-        ----------
-        curiter: int
-          current iteration in training
-        totaliter: int
-          total number of iterations agent will train for
-
-        Saves
-        --------
-        json file: 
-          representing current state of agent
-        weights file:
-          representing current weights of agent
-        """
-        
-        #agent noticably improves every 500000 iterations 
-        if (curiter % 500000==0):
-            stage=int(curiter/500000)
-            modelstr=self.network_type+"model"+str(stage)+".json"
-            weightstr=self.network_type+"model"+str(stage)+".h5"
-            model_json = self.q_network.to_json()
-            with open(modelstr, "w") as json_file:
-                json_file.write(model_json)
-            # serialize weights to HDF5
-            self.q_network.save_weights(weightstr)
+    def save_weights_on_interval(self, curiter):
+        self.actor.online_network.save_weights('actor_weights_'+str(curiter)+'.h5')
+        self.critic.online_network.save_weights('critic_weights_'+str(curiter)+'.h5')
 
     #TO_DO: held out states
     def populate_replay_memory_and_held_out_states(self, env):
@@ -141,7 +74,6 @@ class DQNAgent:
           Environment to be fitted. 
         """
         print("Populating replay mem ...")
-        # populate replay memory
         cur_iteration = 0
         for episode in itertools.count():
             #indicate game has started
@@ -170,8 +102,8 @@ class DQNAgent:
                 s_t1 = np.asmatrix(s_t1)
 
                 #get reward
-                [r_t, kickable_count,status] = self.get_reward(s_t, s_t1,first_time_kickablezone,status)
-                first_time_kickablezone = kickable_count
+                [r_t, first_time_kickablezone, status] = self.get_reward(s_t, s_t1, first_time_kickablezone, status)
+                #is_terminal is set again to account for an edge case
                 if(status != IN_GAME):
                     is_terminal = True
 
@@ -182,9 +114,7 @@ class DQNAgent:
                 s_t = s_t1
 
                 cur_iteration+=1
-
-        
-
+ 
     def advance_environment(self, env):
         status = env.step()
 
@@ -203,40 +133,53 @@ class DQNAgent:
         else:
             env.act(action_type_and_params[0], action_type_and_params[1])
     
-    #TO_DO Batch normalization??
     def update_network(self):
         sample_batch = self.memory.sample(self.batch_size)
 
-        #test forward/backward propegate for all networks
         #get inputs for actor/critc networks and rewards
         next_states = np.zeros((self.batch_size,self.num_features))
         current_states = np.zeros((self.batch_size,self.num_features))
         r_batch = np.zeros((self.batch_size,1))
+        current_action_types = np.zeros((self.batch_size,self.num_action_types))
+        current_action_params = np.zeros((self.batch_size,self.num_action_params))
 
         for i in range(len(sample_batch)):
             next_states[i] = sample_batch[i].s_t1
             current_states[i] = sample_batch[i].s_t
+            cur_action = sample_batch[i].a_t
+            current_action_types[i] = cur_action[0:self.num_action_types]
+            current_action_params[i] = cur_action[self.num_action_types:]
             r_batch[i] = sample_batch[i].r_t
 
         # forward pass to get Q(s',a')
-        q_next = self.actor_critic_target.predict_on_batch(next_states)
-        q_true = np.array(q_next)*self.gamma + r_batch
-        loss = self.actor_critic.train_on_batch(current_states, q_true)
-        return loss
+        action_list = self.actor.target_predict(next_states)
+        q_next = self.critic.target_predict(next_states, action_list[0], action_list[1])
+        q_true = q_next*self.gamma + r_batch
+
+        #train critic
+        self.critic.train(q_true,
+                current_states,
+                current_action_types,
+                current_action_params)
+
+        #train actor
+        scaled_dQdP = self.critic.get_scaled_dQdP(current_states,
+                current_action_types,
+                current_action_params)
+        self.actor.train(scaled_dQdP, current_states)
 
     def soft_update_target(self):
-        # do softupdate on the target network
-        update_portion = self.soft_update_step
-        online_weights = self.actor_critic.get_weights()
-        online_weights = np.array(online_weights)
-        old_target_weights = self.actor_critic_target.get_weights()
-        old_target_weights = np.array(old_target_weights)
+        online_critic_weights = self.critic.online_network.get_weights()
+        old_critic_target_weights = self.critic.target_network.get_weights()
+        new_critic_target_weights = self.soft_update_step*online_critic_weights + (1-self.soft_update_step)*old_critic_target_weights
+        self.critic.target_network.set_weights(new_critic_target_weights)
 
-        new_target_weights = update_portion*online_weights + (1-update_portion)*old_target_weights
-        self.actor_critic_target.set_weights(new_target_weights)
+        online_actor_weights = self.actor.online_network.get_weights()
+        old_actor_target_weights = self.actor.target_network.get_weights()
+        new_actor_target_weights = self.soft_update_step*online_actor_weights + (1-self.soft_update_step)*old_actor_target_weights
+        self.actor.target_network.set_weights(new_actor_target_weights)
 
-
-    def get_reward(self,s_t, s_t1,first_time_kickablezone,status):
+    def get_reward(self, s_t, s_t1, first_time_kickablezone, status):
         """
         Parameters
         ----------
@@ -419,7 +362,7 @@ class DQNAgent:
                     return
 
                 #update network
-                loss = self.update_network()
+                self.update_network()
 
                 # updates the target network with information of the online network
                 # only happens once in a while (according to soft_update_freq)
@@ -559,7 +502,7 @@ class DQNAgent:
 
     def save_replay_memory(self, step):
         memory_size = self.memory.max_size
-        sample_width = self.num_features*2 + self.num_actions + 2
+        sample_width = self.num_features*2 + self.num_action_types + num_action_params + 2
         curr_mem_array = np.zeros((1, sample_width))
         counter = 0
 

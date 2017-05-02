@@ -94,8 +94,15 @@ init_op = tf.global_variables_initializer()
 sess.run(init_op)
 
 actor_output = sess.run(actor_model.output, {a_state_input: np.asmatrix(s)})
+critic_output = sess.run(critic_model.output, 
+        {c_state_input: np.asmatrix(s),
+        c_action_type_input: np.asmatrix(actor_output[0]),
+        c_action_param_input: np.asmatrix(actor_output[1])
+        })
 
 
+print([critic_output])
+input()
 sess.run(critic_train_op1, {
         c_state_input: np.asmatrix(s),
         c_action_type_input: np.asmatrix(actor_output[0]),

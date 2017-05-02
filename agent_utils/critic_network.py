@@ -65,7 +65,7 @@ class CriticNetwork:
         		  tf.mul(self.actor_parameter_output_grads, self.scale_decreasing))
         self.get_scaled_actor_output_grads = [self.actor_output_grads[0], self.scaled_param_grads]
 
-    def train_critic(self, q_target_batch,
+    def train(self, q_target_batch,
     			online_state_input_batch,
     			online_action_type_input_batch,
     			online_action_param_input_batch):

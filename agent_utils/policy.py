@@ -36,13 +36,13 @@ class LinearDecayGreedyEpsilonPolicy:
         self.bounds = bounds
         self.params_squashed = params_squashed
 
-    def get_unsquashed_params(action_values):
-      action_values[5] = action_values[5]*100
+    def get_unsquashed_params(self, action_values):
+      action_values[4] = action_values[4]*100
+      action_values[5] = action_values[5]*360-180
       action_values[6] = action_values[6]*360-180
       action_values[7] = action_values[7]*360-180
-      action_values[8] = action_values[8]*360-180
-      action_values[9] = action_values[9]*100
-      action_values[10] = action_values[10]*360-180
+      action_values[8] = action_values[8]*100
+      action_values[9] = action_values[9]*360-180
       return action_values
 
     def select_action(self, action_values, is_training):
@@ -52,7 +52,8 @@ class LinearDecayGreedyEpsilonPolicy:
         ----------
         action_values: np.array
           The values from final layer of actor network.
-          [Dash, Turn, Tackle, Kick, p1dash, p2dash, p3turn, p4tackle, p5kick, p6kick]
+          [[Dash, Turn, Tackle, Kick, p1dash, p2dash, p3turn, p4tackle, p5kick, p6kick]]
+          NOTE: p1dash, p2dash, p3turn, p4tackle, p5kick, p6kick should be values from 0-1
         is_training: bool
           If true then parameter will be decayed.
 
@@ -65,8 +66,9 @@ class LinearDecayGreedyEpsilonPolicy:
           [Tackle, p4tackle]
           [Kick, p5kick, p6kick]
         """
-        if(params_squashed):
-          action_values = get_unsquashed_params(action_values)
+
+        if(self.params_squashed):
+          action_values[0] = self.get_unsquashed_params(action_values[0])
 
         #calculate epsilon
         if(self.cur_steps >= self.num_steps):

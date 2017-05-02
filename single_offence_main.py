@@ -83,25 +83,28 @@ def main():
 
   #create models
   actor = ActorNetwork(sess, NUM_FEATURES, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, RELU_NEG_SLOPE, LEARNING_RATE)
-  
-
-
   critic = CriticNetwork(sess, NUM_FEATURES, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, get_param_bounds(BOUNDS),
               RELU_NEG_SLOPE,LEARNING_RATE)
 
-
+  #agent policy
   policy = LinearDecayGreedyEpsilonPolicy(1, .1, POLICY_EXPLORATION_STEPS, BOUNDS)
-  preprocessor = None
+  #replay mem
   memory = ReplayMemory(REPLAY_MEM_SIZE)
-  agent = DQNAgent(actor_critic, actor_critic_target,preprocessor,memory,policy,GAMMA,SOFT_UPDATE_FREQ,SOFT_UPDATE_STEP,
-        BATCH_SIZE,MEMORY_THRESHOLD,NUM_ACTIONS,NUM_FEATURES,EVAL_FREQ,EPISODES_PER_EVAL,SAVE_FREQ)
+  #DQ Actor/ Critic Agent
+  agent = DQNAgent(actor, critic, memory, policy, GAMMA, SOFT_UPDATE_FREQ, SOFT_UPDATE_STEP,
+        BATCH_SIZE, MEMORY_THRESHOLD, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, NUM_FEATURES, EVAL_FREQ, EPISODES_PER_EVAL, SAVE_FREQ)
+  
+  #save actor to use later
+  actor_model_str="actor_model.ymal"
+  actor_yaml = actor.online_network.to_yaml()
+  with open(actor_model_str, "w") as yaml_file:
+    yaml_file.write(actor_yaml)
 
-  #compile agent
-  #TO_DO figure out learning rate
-  adam = Adam(lr=0.001)
-  #TO_DO: is this the loss which should be used? or should it be MSE
-  loss = 'mean_squared_error'
-  agent.compile(adam,loss)
+  #save critic to use later
+  critic_model_str="critic_model.ymal"
+  critic_yaml = critic.online_network.to_yaml()
+  with open(critic_model_str, "w") as yaml_file:
+    yaml_file.write(critic_yaml)
 
   #train agent
   try:
