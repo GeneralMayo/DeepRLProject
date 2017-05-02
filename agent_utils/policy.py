@@ -21,7 +21,7 @@ class LinearDecayGreedyEpsilonPolicy:
 
     """
 
-    def __init__(self, start_value, end_value, num_steps, bounds):  # noqa: D102
+    def __init__(self, start_value, end_value, num_steps, bounds, params_squashed=True):  # noqa: D102
         assert num_steps > 0
         assert end_value <= start_value
         assert start_value >= 0
@@ -34,6 +34,16 @@ class LinearDecayGreedyEpsilonPolicy:
         self.num_steps = num_steps
         self.cur_steps = 0
         self.bounds = bounds
+        self.params_squashed = params_squashed
+
+    def get_unsquashed_params(self, action_values):
+      action_values[4] = action_values[4]*100
+      action_values[5] = action_values[5]*360-180
+      action_values[6] = action_values[6]*360-180
+      action_values[7] = action_values[7]*360-180
+      action_values[8] = action_values[8]*100
+      action_values[9] = action_values[9]*360-180
+      return action_values
 
     def select_action(self, action_values, is_training):
         """Decay parameter and select action.
@@ -55,6 +65,10 @@ class LinearDecayGreedyEpsilonPolicy:
           [Tackle, p4tackle]
           [Kick, p5kick, p6kick]
         """
+
+        if(self.params_squashed):
+          action_values[0] = self.get_unsquashed_params(action_values[0])
+
         #calculate epsilon
         if(self.cur_steps >= self.num_steps):
             epsilon = self.end_value

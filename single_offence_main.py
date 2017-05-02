@@ -108,7 +108,7 @@ def init_actor_critic_new(init,RELU_NEG_SLOPE):
 #   return [actor,actorTarget,critic,criticTarget]
 
 def main():
-  debug = False
+  debug = True
   use_old_init = False
   #make backup of tensorboard file then remove it
   if(os.path.isdir('tensorboard_report')):
