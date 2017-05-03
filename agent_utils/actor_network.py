@@ -23,7 +23,7 @@ class ActorNetwork:
 		self.online_network = self.init_actor(init, RELU_NEG_SLOPE, self.online_state_input)
 		self.target_state_input = tf.placeholder(tf.float32, shape=(None, num_states), name='target_state_input')
 		self.target_network = self.init_actor(init, RELU_NEG_SLOPE, self.target_state_input)
-		self.optimizer = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE)
+		self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE)
 
 		#train actor tensors/ops
 		self.action_type_grad = tf.placeholder(tf.float32, shape=(None, num_action_types), name='action_type_grad')
@@ -55,10 +55,8 @@ class ActorNetwork:
 	    actor_hidden4_Dense = Dense(128, kernel_initializer=init)(actor_hidden3)
 	    actor_hidden4 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE,name='4')(actor_hidden4_Dense)
 
-	    type_output_Dense = Dense(4)(actor_hidden4)
-	    type_output = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE, name="type_output")(type_output_Dense)
-	    param_output_Dense = Dense(6)(actor_hidden4)
-	    param_output = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE, name="param_output")(param_output_Dense)
+	    type_output = Dense(4, kernel_initializer=init)(actor_hidden4)
+	    param_output = Dense(6,kernel_initializer=init)(actor_hidden4)
 	        
 	    actor_model = Model(inputs=[actor_input], outputs=[type_output, param_output])
 

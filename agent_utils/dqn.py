@@ -49,6 +49,7 @@ class DQNAgent:
         self.episodes_per_eval = episodes_per_eval
         self.save_freq = save_freq
         self.WRITER_FILE_PATH = "tensorboard_report"
+        self.MEM_FILE_NAME = "replay_mem_"
 
     def calc_action_vector(self, state):
         #predict state types + params
@@ -89,7 +90,7 @@ class DQNAgent:
                 action_vector = self.calc_action_vector(s_t)
 
                 #loads action ie: env.act(DASH, 20.0, 0.)
-                self.load_action(env, action_vector)
+                self.load_action(env, action_vector, False)
 
                 #advance the environment and get the game status
                 [status, is_terminal] = self.advance_environment(env)
@@ -111,7 +112,7 @@ class DQNAgent:
                 s_t = s_t1
 
                 cur_iteration+=1
- 
+
     def advance_environment(self, env):
         status = env.step()
 
@@ -122,9 +123,27 @@ class DQNAgent:
         
         return [status, is_terminal]
 
-    def load_action(self, env, action_vector):
+    def load_action(self, env, action_vector, is_training):
         #get chosen action
-        action_type_and_params = self.policy.select_action(action_vector, True)
+        action_type_and_params = self.policy.select_action(action_vector, is_training)
+
+        """
+        allW = self.critic.online_network.get_weights()
+        weightSum = 0
+        for wVec in allW[0]:
+            weightSum += abs(np.sum(wVec))
+        criticW = weightSum
+
+        allW = self.actor.online_network.get_weights()
+        weightSum = 0
+        for wVec in allW[0]:
+            weightSum += abs(np.sum(wVec))
+        actorW = weightSum
+
+        print("Actor: "+str(actorW)+" Critic: "+str(criticW))
+        print("Action: "+str(action_type_and_params))
+        """
+
         if(len(action_type_and_params) == 3):
             env.act(action_type_and_params[0], action_type_and_params[1], action_type_and_params[2])
         else:
@@ -159,20 +178,22 @@ class DQNAgent:
                 current_action_types,
                 current_action_params)
 
+
         #train actor
         scaled_dQdP = self.critic.get_scaled_dQdP(current_states,
                 current_action_types,
                 current_action_params)
         self.actor.train(scaled_dQdP, current_states)
 
+
     def soft_update_target(self):
-        online_critic_weights = self.critic.online_network.get_weights()
-        old_critic_target_weights = self.critic.target_network.get_weights()
+        online_critic_weights = np.array(self.critic.online_network.get_weights())
+        old_critic_target_weights = np.array(self.critic.target_network.get_weights())
         new_critic_target_weights = self.soft_update_step*online_critic_weights + (1-self.soft_update_step)*old_critic_target_weights
         self.critic.target_network.set_weights(new_critic_target_weights)
 
-        online_actor_weights = self.actor.online_network.get_weights()
-        old_actor_target_weights = self.actor.target_network.get_weights()
+        online_actor_weights = np.array(self.actor.online_network.get_weights())
+        old_actor_target_weights = np.array(self.actor.target_network.get_weights())
         new_actor_target_weights = self.soft_update_step*online_actor_weights + (1-self.soft_update_step)*old_actor_target_weights
         self.actor.target_network.set_weights(new_actor_target_weights)
 
@@ -296,16 +317,13 @@ class DQNAgent:
         #if(status == GOAL):
           #print("change in distance between ball and goal", ball_dist_goal_delta)
 
-        
-
-
         #incremenr reward by 3. change in distance between goal and ball
         reward += 3.0*ball_dist_goal_delta
         #if(status == GOAL):
         #print("reward at goal after adding r for 'move ball towards goal' ", reward)
         
         #Check if goal or not
-        if(ball_dist_goal_t < 0.1):
+        if(ball_dist_goal_t < 0.1 and ball_dist_goal_delta > .1):
           status = GOAL
           reward = 5.0
           
@@ -379,7 +397,7 @@ class DQNAgent:
                 action_vector = self.calc_action_vector(s_t)
 
                 #loads action ie: env.act(DASH, 20.0, 0.)
-                self.load_action(env, action_vector)
+                self.load_action(env, action_vector, True)
 
                 #advance the environment and get the game status
                 [status, is_terminal] = self.advance_environment(env)
@@ -436,10 +454,15 @@ class DQNAgent:
             steps = 0
             while status == IN_GAME:
                 action_vector = self.calc_action_vector(s_t)
-                q_value += self.actor_critic_target.predict(s_t)
+
+                #get q_value
+                q_value_mat = self.critic.online_predict(s_t, 
+                    np.asmatrix(action_vector[0][0:self.num_action_types]),
+                    np.asmatrix(action_vector[0][self.num_action_types:]))
+                q_value += q_value_mat[0][0]
 
                 #loads action ie: env.act(DASH, 20.0, 0.)
-                self.load_action(env, action_vector)
+                self.load_action(env, action_vector, False)
 
                 #advance the environment and get the game status
                 [status, is_terminal] = self.advance_environment(env)

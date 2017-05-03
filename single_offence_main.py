@@ -24,12 +24,12 @@ from critic_network import CriticNetwork
 
 def get_param_bounds(BOUNDS):
   #assuming this param order --> [p1dash, p2dash, p3turn, p4tackle, p5kick, p6kick]
-  lowerBounds = np.array([0, -180, -180, -180, 0, -180])
-  upperBounds = np.array([100, 180, 180, 180, 100, 180])
+  lowerBounds = np.array([0.0, -180.0, -180.0, -180.0, 0, -180.0])
+  upperBounds = np.array([100.0, 180.0, 180.0, 180.0, 100.0, 180.0])
   return [lowerBounds,upperBounds]
 
 def main():
-  debug = True
+  debug = False
   if(debug):
     print("\n\nIN DEBUGGING MODE\n\n")
   else:
@@ -49,7 +49,6 @@ def main():
   #power and directon bounds respectively
   BOUNDS = [[0,100],[-180,180]]
   GAMMA = .99
-  BATCH_SIZE = 32
   #Relu slope of negative region
   RELU_NEG_SLOPE = 0.01
   #max num of samples which can be stored in memory
@@ -57,10 +56,11 @@ def main():
 
   #debug constants
   if(debug):
+    BATCH_SIZE = 1
     SOFT_UPDATE_FREQ = 1
     SOFT_UPDATE_STEP = .001
     MAX_EPISODE_LEN = 400
-    MEMORY_THRESHOLD = 100
+    MEMORY_THRESHOLD = 10
     NUM_ITERATIONS = 3000
     EPISODES_PER_EVAL = 2
     EVAL_FREQ = 500
@@ -69,6 +69,7 @@ def main():
     POLICY_EXPLORATION_STEPS = 100
   #actual constants
   else:
+    BATCH_SIZE = 32
     SOFT_UPDATE_FREQ = 1
     SOFT_UPDATE_STEP = .001
     MAX_EPISODE_LEN = 400
@@ -95,8 +96,27 @@ def main():
   init_op = tf.global_variables_initializer()
   sess.run(init_op)
 
+
+
+  """
+  current_states = np.asmatrix(np.random.random((1,58)))
+  current_action_types = np.asmatrix(np.random.random((1,4)))
+  current_action_params = np.asmatrix(np.array([0.0, -180.0, -180.0, -180.0, 0, -180.0]))
+  param = -180
+  while(param < 10000):
+    current_action_params[0,1] = param
+    scaled_dQdP = critic.get_scaled_dQdP(current_states,
+                  current_action_types,
+                  current_action_params)
+
+    print(scaled_dQdP[1][0][1])
+    param +=1    
+
+  input()
+  """
+
   #agent policy
-  policy = LinearDecayGreedyEpsilonPolicy(1, .1, POLICY_EXPLORATION_STEPS, BOUNDS)
+  policy = LinearDecayGreedyEpsilonPolicy(1, .1, POLICY_EXPLORATION_STEPS, BOUNDS, False)
   #replay mem
   memory = ReplayMemory(REPLAY_MEM_SIZE)
   #DQ Actor/ Critic Agent

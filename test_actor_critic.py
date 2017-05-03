@@ -54,7 +54,7 @@ RELU_NEG_SLOPE = 0.01
 LEARNING_RATE = .1
 r = 1
 gamma = 0.99
-batch_size = 2
+batch_size = 1
 s = np.random.random((batch_size,58))
 s_new = np.random.random((1,58))
 SCALING_FACTOR = 10000000
@@ -99,9 +99,13 @@ critic_output = sess.run(critic_model.output,
         c_action_type_input: np.asmatrix(actor_output[0]),
         c_action_param_input: np.asmatrix(actor_output[1])
         })
-
-
-print([critic_output])
+weightSum = 0
+for wVec in critic_model.get_weights()[0]:
+    print("HI")
+    weightSum += np.sum(wVec)
+print(weightSum)
+input()
+print(critic_output[0][0])
 input()
 sess.run(critic_train_op1, {
         c_state_input: np.asmatrix(s),

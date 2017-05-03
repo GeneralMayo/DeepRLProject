@@ -21,7 +21,7 @@ class CriticNetwork:
 
     init = keras.initializers.RandomNormal(mean=0.0, stddev=0.01, seed=None)
 
-    self.optimizer = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE)
+    self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE)
 
     #online critic
     self.online_state_input = tf.placeholder(tf.float32, shape=(None, num_states), name='online_state_input')
@@ -100,8 +100,7 @@ class CriticNetwork:
     critic_hidden4_Dense = Dense(128, kernel_initializer=init)(critic_hidden3)
     critic_hidden4 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden4_Dense)
 
-    critic_output_Dense = Dense(1)(critic_hidden4)
-    critic_output = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE, name="critic_output")(critic_output_Dense)
+    critic_output = Dense(1)(critic_hidden4)
     critic_model = Model(inputs=[critic_input], outputs=[critic_output])
     
     return critic_model

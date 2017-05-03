@@ -21,7 +21,7 @@ class LinearDecayGreedyEpsilonPolicy:
 
     """
 
-    def __init__(self, start_value, end_value, num_steps, bounds, params_squashed=True):  # noqa: D102
+    def __init__(self, start_value, end_value, num_steps, bounds, params_squashed):  # noqa: D102
         assert num_steps > 0
         assert end_value <= start_value
         assert start_value >= 0
@@ -66,7 +66,6 @@ class LinearDecayGreedyEpsilonPolicy:
           [Tackle, p4tackle]
           [Kick, p5kick, p6kick]
         """
-
         if(self.params_squashed):
           action_values[0] = self.get_unsquashed_params(action_values[0])
 
@@ -76,7 +75,8 @@ class LinearDecayGreedyEpsilonPolicy:
         else:
             epsilon = self.start_value + (self.cur_steps/float(self.num_steps))*(self.end_value-self.start_value)
 
-        self.cur_steps +=1
+        if(is_training):
+          self.cur_steps +=1
 
         if(epsilon>np.random.rand()):
           #choose random action type
@@ -85,15 +85,15 @@ class LinearDecayGreedyEpsilonPolicy:
           #choose random parameters
           if(ACTION_TYPE == DASH or ACTION_TYPE == KICK):
             #random power/direction
-            return [ACTION_TYPE, np.random.uniform(self.bounds[0][0],self.bounds[0][0]), np.random.uniform(self.bounds[1][0],self.bounds[1][0])]
+            return [ACTION_TYPE, np.random.uniform(self.bounds[0][0],self.bounds[0][1]), np.random.uniform(self.bounds[1][0],self.bounds[1][1])]
           else:
             #random direction
-            return [ACTION_TYPE, np.random.uniform(self.bounds[1][0],self.bounds[1][0])]
+            return [ACTION_TYPE, np.random.uniform(self.bounds[1][0],self.bounds[1][1])]
         else:
           #convert discreet action values to a list
           action_values_list = list(action_values[0,0:4])
           ACTION_TYPE = action_values_list.index(max(action_values_list))
-          
+
           if(ACTION_TYPE == DASH):
             return [ACTION_TYPE,action_values[0,4],action_values[0,5]]
           elif(ACTION_TYPE == TURN):
