@@ -44,7 +44,7 @@ class ActorNetwork:
 		    self.online_state_input: np.asmatrix(online_state_input_batch)
 		    })
 
-	def init_actor(init, RELU_NEG_SLOPE, actor_input_tensor):
+	def init_actor(self, init, RELU_NEG_SLOPE, actor_input_tensor):
 	    actor_input = Input(tensor=actor_input_tensor)
 	    actor_hidden1_Dense = Dense(1024, kernel_initializer=init)(actor_input)
 	    actor_hidden1 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE,name='1')(actor_hidden1_Dense)

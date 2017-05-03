@@ -29,11 +29,17 @@ def get_param_bounds(BOUNDS):
   return [lowerBounds,upperBounds]
 
 def main():
-  debug = False
+  debug = True
+  if(debug):
+    print("\n\nIN DEBUGGING MODE\n\n")
+  else:
+    print("\n\nNOT IN DEBUGGING MODE\n\n")
+
   use_old_init = False
   #make backup of tensorboard file then remove it
-  if(os.path.isdir('tensorboard_report')):
-    raise Exception('Back up tensorboard_report!')
+  
+  #if(os.path.isdir('tensorboard_report')):
+    #raise Exception('Back up tensorboard_report!')
 
   #set constants
   NUM_FEATURES = 58
@@ -83,8 +89,11 @@ def main():
 
   #create models
   actor = ActorNetwork(sess, NUM_FEATURES, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, RELU_NEG_SLOPE, LEARNING_RATE)
-  critic = CriticNetwork(sess, NUM_FEATURES, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, get_param_bounds(BOUNDS),
-              RELU_NEG_SLOPE,LEARNING_RATE)
+  critic = CriticNetwork(sess, NUM_FEATURES, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, get_param_bounds(BOUNDS), BATCH_SIZE,
+              RELU_NEG_SLOPE,LEARNING_RATE) 
+
+  init_op = tf.global_variables_initializer()
+  sess.run(init_op)
 
   #agent policy
   policy = LinearDecayGreedyEpsilonPolicy(1, .1, POLICY_EXPLORATION_STEPS, BOUNDS)
@@ -107,14 +116,15 @@ def main():
     yaml_file.write(critic_yaml)
 
   #train agent
-  try:
-    agent.fit(env, NUM_ITERATIONS, MAX_EPISODE_LEN)
+  #try:
+  agent.fit(env, NUM_ITERATIONS, MAX_EPISODE_LEN)
+  """
     print("FINISHED TRAINING")
   except(Exception):
     print("EMERGENCY_SAVE")
-    agent.save_models(6666)
+    agent.save_weights(6666)
     agent.save_replay_memory(6666)
-  
+  """
 
 if __name__ == '__main__':
   main()

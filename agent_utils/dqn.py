@@ -48,19 +48,16 @@ class DQNAgent:
         self.eval_freq = eval_freq
         self.episodes_per_eval = episodes_per_eval
         self.save_freq = save_freq
+        self.WRITER_FILE_PATH = "tensorboard_report"
 
     def calc_action_vector(self, state):
         #predict state types + params
-        action_list = self.actor.online__predict(state)
+        action_list = self.actor.online_predict(state)
         
         #convert action_list to proper format
         action_vector = np.concatenate((action_list[0], action_list[1]), axis=1)
 
         return action_vector
-
-    def save_weights_on_interval(self, curiter):
-        self.actor.online_network.save_weights('actor_weights_'+str(curiter)+'.h5')
-        self.critic.online_network.save_weights('critic_weights_'+str(curiter)+'.h5')
 
     #TO_DO: held out states
     def populate_replay_memory_and_held_out_states(self, env):
@@ -147,8 +144,8 @@ class DQNAgent:
             next_states[i] = sample_batch[i].s_t1
             current_states[i] = sample_batch[i].s_t
             cur_action = sample_batch[i].a_t
-            current_action_types[i] = cur_action[0:self.num_action_types]
-            current_action_params[i] = cur_action[self.num_action_types:]
+            current_action_types[i] = cur_action[0][0:self.num_action_types]
+            current_action_params[i] = cur_action[0][self.num_action_types:]
             r_batch[i] = sample_batch[i].r_t
 
         # forward pass to get Q(s',a')
@@ -340,13 +337,11 @@ class DQNAgent:
         #populate replay memory
         self.populate_replay_memory_and_held_out_states(env)
 
-        #iterate through environment samples
 
         # writer for tensorboard
-        # the path is a new subfolder created in the working dir
         writer = tf.summary.FileWriter(self.WRITER_FILE_PATH)
 
-
+        #iterate through environment samples
         cur_iteration = 0
         for episode in itertools.count():
             #indicate game has started
@@ -356,28 +351,28 @@ class DQNAgent:
             s_t = np.asmatrix(s_t)
             first_time_kickablezone = 0
             while status == IN_GAME:
+                #final save
                 if(cur_iteration == num_iterations):
-                    self.save_models(cur_iteration)
+                    self.save_weights(cur_iteration)
                     self.save_replay_memory(cur_iteration)
                     return
 
                 #update network
                 self.update_network()
 
-                # updates the target network with information of the online network
-                # only happens once in a while (according to soft_update_freq)
+                #update target
                 if cur_iteration % self.soft_update_freq == 0:
                     self.soft_update_target()
 
-                #check if network needs to be evaluated
+                #evaluate network
                 if cur_iteration % self.eval_freq == 0:
                     ave_reward, ave_qvalue = self.evaluate(env, self.episodes_per_eval)
                     self.save_scalar(cur_iteration, 'reward', ave_reward, writer)
                     self.save_scalar(cur_iteration, 'q_value', ave_qvalue, writer)
 
-                #chekc if models + replay memory need to be saved
+                #checkpoint save
                 if cur_iteration % self.save_freq == 0 and cur_iteration != 0:
-                    self.save_models(cur_iteration)
+                    self.save_weights(cur_iteration)
                     self.save_replay_memory(cur_iteration)
 
                 #get action vector
@@ -399,7 +394,6 @@ class DQNAgent:
                 if(status != IN_GAME):
                     is_terminal = True
 
-
                 #store sample
                 self.memory.append(s_t, action_vector, r_t, s_t1, is_terminal)
 
@@ -410,11 +404,14 @@ class DQNAgent:
 
             # Check the outcome of the episode
             print('Episode %d ended with %s'%(episode, env.statusToString(status)))
+            print('Current Iteration: '+str(cur_iteration))
             # Quit if the server goes down
             if status == SERVER_DOWN:
                 env.act(QUIT)
                 print("SERVER DOWN...")
-                self.save_models(cur_iteration)
+
+                #emergency save
+                self.save_weights(cur_iteration)
                 self.save_replay_memory(cur_iteration)
                 break
 
@@ -468,6 +465,13 @@ class DQNAgent:
         print('End Evaluate')
         return np.mean(ave_rewards), np.mean(ave_qvalues)
 
+
+    def save_weights(self, curiter):
+        self.actor.online_network.save_weights('online_actor_weights_'+str(curiter)+'.h5')
+        self.critic.online_network.save_weights('online_critic_weights_'+str(curiter)+'.h5')
+        self.actor.target_network.save_weights('target_actor_weights_'+str(curiter)+'.h5')
+        self.critic.target_network.save_weights('target_critic_weights_'+str(curiter)+'.h5')
+
     # call this function like this:
     # self.save_scalar(steps_after_first_memfull, 'avg_reward', avg_reward, writer)
     # step:iteration count (x axis of the plots)
@@ -494,15 +498,9 @@ class DQNAgent:
         summary_value.tag = name
         writer.add_summary(summary, step)
 
-    def save_models(self, step):
-        new_model_file_string = self.MODEL_FILE_STRING_AC + str(step) + '.h5'
-        new_target_model_file_string = self.MODEL_FILE_STRING_TAR + str(step) + '.h5'
-        self.actor_critic.save(new_model_file_string)
-        self.actor_critic.save(new_target_model_file_string)
-
     def save_replay_memory(self, step):
         memory_size = self.memory.max_size
-        sample_width = self.num_features*2 + self.num_action_types + num_action_params + 2
+        sample_width = self.num_features*2 + self.num_action_types + self.num_action_params + 2
         curr_mem_array = np.zeros((1, sample_width))
         counter = 0
 
