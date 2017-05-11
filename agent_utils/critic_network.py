@@ -4,6 +4,8 @@ import tensorflow as tf
 from keras.models import Sequential, Model
 from keras.layers import Dense, Input
 import keras
+from keras.layers.normalization import BatchNormalization
+from keras import backend as K
 
 
 class CriticNetwork:
@@ -15,13 +17,14 @@ class CriticNetwork:
     action_param_bounds,
     BATCH_SIZE, 
     RELU_NEG_SLOPE, 
-    LEARNING_RATE):
+    LEARNING_RATE,
+    GRAD_CLIP):
 
     self.sess = sess
 
     init = keras.initializers.RandomNormal(mean=0.0, stddev=0.01, seed=None)
 
-    self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE)
+    self.optimizer = tf.train.AdamOptimizer(learning_rate=LEARNING_RATE)
 
     #online critic
     self.online_state_input = tf.placeholder(tf.float32, shape=(None, num_states), name='online_state_input')
@@ -41,18 +44,26 @@ class CriticNetwork:
     self.loss = tf.pow(self.online_network.output-self.q_target,2)/BATCH_SIZE
     
     #train op
-    self.train_op = self.optimizer.minimize(self.loss)
+    def ClipIfNotNone(grad):
+        if grad is None:
+            return grad
+        return tf.clip_by_value(grad, -GRAD_CLIP, GRAD_CLIP)
+    gvs = self.optimizer.compute_gradients(self.loss)
+    capped_gvs = [(ClipIfNotNone(grad), var) for grad, var in gvs]
+    self.train_op = self.optimizer.apply_gradients(capped_gvs)
 
     #Scale Actor Grads
     #normal grads
     self.actor_output_grads = tf.gradients(self.online_network.output, [self.online_action_type_input, self.online_action_param_input])
+
     self.actor_output_grads[0] = self.actor_output_grads[0]/BATCH_SIZE
     self.actor_output_grads[1] = self.actor_output_grads[1]/BATCH_SIZE
     self.actor_parameter_output_grads = self.actor_output_grads[1]
-    
+
     #scaling factors
     self.pmin = tf.constant(action_param_bounds[0], dtype = tf.float32)
     self.pmax = tf.constant(action_param_bounds[1], dtype = tf.float32)
+
     self.prange = tf.constant([x - y for x, y in zip(action_param_bounds[1], action_param_bounds[0])], dtype = tf.float32)
     self.scale_increasing = tf.div(-self.online_action_param_input + self.pmax, self.prange)
     self.scale_decreasing = tf.div( self.online_action_param_input - self.pmin, self.prange)
@@ -64,12 +75,15 @@ class CriticNetwork:
          tf.multiply(self.actor_parameter_output_grads, self.scale_increasing),
           tf.multiply(self.actor_parameter_output_grads, self.scale_decreasing))
     self.get_scaled_actor_output_grads = [self.actor_output_grads[0], self.scaled_param_grads]
-  
+    
+    self.get_scaled_actor_output_grads = self.actor_output_grads
+
   def train(self, q_target_batch, online_state_input_batch, online_action_type_input_batch, online_action_param_input_batch):
     self.sess.run(self.train_op, {self.q_target: q_target_batch,
         self.online_state_input: online_state_input_batch,
         self.online_action_type_input: online_action_type_input_batch,
-        self.online_action_param_input: online_action_param_input_batch})
+        self.online_action_param_input: online_action_param_input_batch,
+        K.learning_phase(): 1})
 
   def get_scaled_dQdP(self, online_state_input_batch,
         online_action_type_input_batch,
@@ -77,28 +91,37 @@ class CriticNetwork:
     return self.sess.run(self.get_scaled_actor_output_grads, 
         {self.online_state_input: online_state_input_batch,
         self.online_action_type_input: online_action_type_input_batch,
-        self.online_action_param_input: online_action_param_input_batch})
+        self.online_action_param_input: online_action_param_input_batch,
+        K.learning_phase(): 1})
 
 
   def online_predict(self, state, action_type, action_param):
     return self.sess.run(self.online_network.output, 
         {self.online_state_input: state,
         self.online_action_type_input: action_type,
-        self.online_action_param_input: action_param})
+        self.online_action_param_input: action_param,
+        K.learning_phase(): 0})
 
   def target_predict(self, state, action_type, action_param):
-    return self.sess.run(self.target_network.output, {self.target_state_input: state, self.target_action_type_input: action_type,self.target_action_param_input: action_param})
+    return self.sess.run(self.target_network.output, {self.target_state_input: state, 
+        self.target_action_type_input: action_type,
+        self.target_action_param_input: action_param,
+        K.learning_phase(): 0})
 
   def init_critic(self, init, RELU_NEG_SLOPE, critic_input_tensor):
     critic_input = Input(tensor=critic_input_tensor)
     critic_hidden1_Dense = Dense(1024, kernel_initializer=init)(critic_input)
-    critic_hidden1 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden1_Dense)
+    critic_hidden1_Dense_Norm=BatchNormalization()(critic_hidden1_Dense)
+    critic_hidden1 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden1_Dense_Norm)
     critic_hidden2_Dense = Dense(512, kernel_initializer=init)(critic_hidden1)
-    critic_hidden2 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden2_Dense)
+    critic_hidden2_Dense_Norm=BatchNormalization()(critic_hidden2_Dense)
+    critic_hidden2 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden2_Dense_Norm)
     critic_hidden3_Dense = Dense(256, kernel_initializer=init)(critic_hidden2)
-    critic_hidden3 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden3_Dense)
+    critic_hidden3_Dense_Norm=BatchNormalization()(critic_hidden3_Dense)
+    critic_hidden3 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden3_Dense_Norm)
     critic_hidden4_Dense = Dense(128, kernel_initializer=init)(critic_hidden3)
-    critic_hidden4 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden4_Dense)
+    critic_hidden4_Dense_Norm=BatchNormalization()(critic_hidden4_Dense)
+    critic_hidden4 = keras.layers.advanced_activations.LeakyReLU(alpha=RELU_NEG_SLOPE)(critic_hidden4_Dense_Norm)
 
     critic_output = Dense(1)(critic_hidden4)
     critic_model = Model(inputs=[critic_input], outputs=[critic_output])

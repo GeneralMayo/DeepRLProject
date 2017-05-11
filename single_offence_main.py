@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 # Before running this program, first Start HFO server:
-# $> ./bin/HFO --offense-agents 1
+# $> ./bin/HFO --offense-agents 1 --headless --fullstate
 
 from hfo import *
 
@@ -38,8 +38,8 @@ def main():
   use_old_init = False
   #make backup of tensorboard file then remove it
   
-  #if(os.path.isdir('tensorboard_report')):
-    #raise Exception('Back up tensorboard_report!')
+  if(os.path.isdir('tensorboard_report') and not(debug)):
+    raise Exception('Back up tensorboard_report!')
 
   #set constants
   NUM_FEATURES = 58
@@ -54,6 +54,10 @@ def main():
   #max num of samples which can be stored in memory
   REPLAY_MEM_SIZE = 500000
 
+  CRITIC_LEARNING_RATE = .001
+  ACTOR_LEARNING_RATE = .00001
+  GRAD_CLIP = 10.0
+
   #debug constants
   if(debug):
     BATCH_SIZE = 1
@@ -65,7 +69,6 @@ def main():
     EPISODES_PER_EVAL = 2
     EVAL_FREQ = 500
     SAVE_FREQ = 500
-    LEARNING_RATE = .001
     POLICY_EXPLORATION_STEPS = 100
   #actual constants
   else:
@@ -74,11 +77,10 @@ def main():
     SOFT_UPDATE_STEP = .001
     MAX_EPISODE_LEN = 400
     MEMORY_THRESHOLD = 1000
-    NUM_ITERATIONS = 750000
+    NUM_ITERATIONS = 3000000
     EPISODES_PER_EVAL = 20
     EVAL_FREQ = 5000
     SAVE_FREQ = 100000
-    LEARNING_RATE = .001
     POLICY_EXPLORATION_STEPS = 10000
 
   # Create the HFO Environment
@@ -89,9 +91,9 @@ def main():
                       'localhost', 'base_left', False)
 
   #create models
-  actor = ActorNetwork(sess, NUM_FEATURES, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, RELU_NEG_SLOPE, LEARNING_RATE)
+  actor = ActorNetwork(sess, NUM_FEATURES, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, RELU_NEG_SLOPE, ACTOR_LEARNING_RATE,GRAD_CLIP)
   critic = CriticNetwork(sess, NUM_FEATURES, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, get_param_bounds(BOUNDS), BATCH_SIZE,
-              RELU_NEG_SLOPE,LEARNING_RATE) 
+              RELU_NEG_SLOPE,CRITIC_LEARNING_RATE,GRAD_CLIP) 
 
   init_op = tf.global_variables_initializer()
   sess.run(init_op)
@@ -122,7 +124,7 @@ def main():
   #DQ Actor/ Critic Agent
   agent = DQNAgent(actor, critic, memory, policy, GAMMA, SOFT_UPDATE_FREQ, SOFT_UPDATE_STEP,
         BATCH_SIZE, MEMORY_THRESHOLD, NUM_ACTION_TYPES, NUM_ACTION_PARAMS, NUM_FEATURES, EVAL_FREQ, EPISODES_PER_EVAL, SAVE_FREQ)
-  
+              
   #save actor to use later
   actor_model_str="actor_model.ymal"
   actor_yaml = actor.online_network.to_yaml()

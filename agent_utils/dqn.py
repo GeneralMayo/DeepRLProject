@@ -139,10 +139,11 @@ class DQNAgent:
         for wVec in allW[0]:
             weightSum += abs(np.sum(wVec))
         actorW = weightSum
-
-        print("Actor: "+str(actorW)+" Critic: "+str(criticW))
-        print("Action: "+str(action_type_and_params))
         """
+        #print("Actor: "+str(actorW)+" Critic: "+str(criticW))
+        if(np.random.random()<.01):
+            print("Action: "+str(action_type_and_params))
+    
 
         if(len(action_type_and_params) == 3):
             env.act(action_type_and_params[0], action_type_and_params[1], action_type_and_params[2])
@@ -184,7 +185,6 @@ class DQNAgent:
                 current_action_types,
                 current_action_params)
         self.actor.train(scaled_dQdP, current_states)
-
 
     def soft_update_target(self):
         online_critic_weights = np.array(self.critic.online_network.get_weights())
